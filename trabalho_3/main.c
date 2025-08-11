@@ -4,10 +4,10 @@
 
 extern int my_printf(const char* format, ...);
 extern int my_scanf(const char* format, ...);
-extern int my_fopen(const char* filename, const char* mode);
-extern int my_fclose(int fd);
-extern int my_fprintf(int fd, const char* format, ...);
-extern int my_fscanf(int fd, const char* format, char* buffer);
+extern FILE* my_fopen(const char* filename, const char* mode);
+extern int my_fclose(FILE* stream);
+extern int my_fprintf(FILE* stream, const char* format, ...);
+extern int my_fscanf(FILE* stream, const char* format, char* buffer);
 
 void test_printf() {
     my_printf("--- Teste my_printf ---\n");
@@ -54,33 +54,31 @@ void test_file_io() {
     my_printf("\n--- Teste de I/O de Arquivo ---\n");
 
     my_printf("Abrindo arquivo 'test.txt' para escrita...\n");
-    int fd = my_fopen(filename, "w");
-    if (fd < 0) {
+    FILE* file_ptr = my_fopen(filename, "w");
+    if (file_ptr == 0) {
         my_printf("Erro ao abrir arquivo para escrita!\n");
         return;
     }
-    sprintf(log_buffer, "Arquivo aberto com descritor: %d\n", fd);
-    my_printf(log_buffer);
+    my_printf("Arquivo aberto com sucesso.\n");
 
     my_printf("Escrevendo no arquivo...\n");
-    int written_bytes = my_fprintf(fd, content_to_write);
+    int written_bytes = my_fprintf(file_ptr, content_to_write);
     sprintf(log_buffer, "my_fprintf escreveu %d bytes.\n", written_bytes);
     my_printf(log_buffer);
 
     my_printf("Fechando o arquivo...\n");
-    my_fclose(fd);
+    my_fclose(file_ptr);
 
     my_printf("\nAbrindo arquivo 'test.txt' para leitura...\n");
-    fd = my_fopen(filename, "r");
-    if (fd < 0) {
+    file_ptr = my_fopen(filename, "r");
+    if (file_ptr == 0) {
         my_printf("Erro ao abrir arquivo para leitura!\n");
         return;
     }
-    sprintf(log_buffer, "Arquivo reaberto com descritor: %d\n", fd);
-    my_printf(log_buffer);
+    my_printf("Arquivo reaberto com sucesso.\n");
 
     my_printf("Lendo do arquivo...\n");
-    int read_bytes = my_fscanf(fd, NULL, read_buffer);
+    int read_bytes = my_fscanf(file_ptr, NULL, read_buffer);
     if (read_bytes >= 0) {
         my_printf("Conteúdo lido do arquivo:\n---\n");
         my_printf(read_buffer);
@@ -92,7 +90,7 @@ void test_file_io() {
     }
 
     my_printf("Fechando o arquivo...\n");
-    my_fclose(fd);
+    my_fclose(file_ptr);
 }
 
 int main() {

@@ -17,6 +17,10 @@
 .lcomm buffer, TAM_BUFFER
 .lcomm itoa_buffer, 20
 
+.equ MAX_FILES, 10
+.lcomm file_pool, MAX_FILES*8
+.lcomm pool_initialized, 1
+
 .section .text
 
 # ----------------------------------------
@@ -307,51 +311,128 @@ _scanf_end:
 	ret
 
 # ----------------------------------------
-# my_fopen: abre um arquivo
+# _init_file_pool: inicializa todos os slots do pool com -1 (livre)
+# ----------------------------------------
+_init_file_pool:
+    pushq %rbp
+    movq %rsp, %rbp
+
+    movq $0, %rcx
+    leaq file_pool(%rip), %rdi
+_init_loop:
+    cmpq $MAX_FILES, %rcx
+    jge _init_done
+    movq $-1, (%rdi, %rcx, 8)
+    incq %rcx
+    jmp _init_loop
+_init_done:
+    movb $1, pool_initialized(%rip)
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+# ----------------------------------------
+# my_fopen: abre um arquivo e retorna um FILE*
 # Argumentos: %rdi -> filename, %rsi -> mode
-# Retorno: %rax -> file descriptor ou erro
+# Retorno: %rax -> FILE* ou 0 em caso de erro
 # ----------------------------------------
 .globl my_fopen
 my_fopen:
 	pushq %rbp
 	movq %rsp, %rbp
+    pushq %r12
 
-	movq $O_RDONLY, %r8
-	cmpb $'w', (%rsi)
-	jne _fopen_open
-	movq $O_WRONLY, %r8
-	orq $O_CREAT, %r8
+    pushq %rdi
+    pushq %rsi
 
-_fopen_open:
-	movq %r8, %rsi
-	movq $FILE_MODE, %rdx
-	movq $SYS_OPEN, %rax
-	syscall
-	
-	movq %rbp, %rsp
-	popq %rbp
-	ret
+    cmpb $0, pool_initialized(%rip)
+    jne _fopen_after_init
+    call _init_file_pool
+_fopen_after_init:
+
+    popq %rsi
+    popq %rdi
+
+    movq $O_RDONLY, %r8
+    cmpb $'w', (%rsi)
+    jne _fopen_open_syscall
+    movq $O_WRONLY, %r8
+    orq $O_CREAT, %r8
+
+_fopen_open_syscall:
+    movq %r8, %rsi
+    movq $FILE_MODE, %rdx
+    movq $SYS_OPEN, %rax
+    syscall
+
+    cmpq $0, %rax
+    jl _fopen_error
+
+    movq %rax, %r12
+    movq $0, %rcx
+    leaq file_pool(%rip), %rdi
+_fopen_find_slot:
+    cmpq $MAX_FILES, %rcx
+    jge _fopen_no_slot_error
+    cmpq $-1, (%rdi, %rcx, 8)
+    je _fopen_slot_found
+    incq %rcx
+    jmp _fopen_find_slot
+
+_fopen_slot_found:
+    leaq file_pool(%rip), %rdi
+    leaq (%rdi, %rcx, 8), %rax
+    movq %r12, (%rax)
+    jmp _fopen_exit
+
+_fopen_error:
+    movq $0, %rax
+    jmp _fopen_exit
+
+_fopen_no_slot_error:
+    movq %r12, %rdi
+    movq $SYS_CLOSE, %rax
+    syscall
+    movq $0, %rax
+
+_fopen_exit:
+    popq %r12
+    movq %rbp, %rsp
+    popq %rbp
+    ret
 
 # ----------------------------------------
-# my_fclose: fecha um arquivo
-# Argumentos: %rdi -> file descriptor
+# my_fclose: fecha um arquivo a partir de um FILE*
+# Argumentos: %rdi -> FILE*
 # Retorno: %rax -> 0 (sucesso) ou -1 (erro)
 # ----------------------------------------
 .globl my_fclose
 my_fclose:
 	pushq %rbp
 	movq %rsp, %rbp
-	
-	movq $SYS_CLOSE, %rax
-	syscall
-	
-	movq %rbp, %rsp
-	popq %rbp
-	ret
+
+    cmpq $0, %rdi
+    je _fclose_error
+
+    movq (%rdi), %rsi
+    movq $-1, (%rdi)
+
+    movq %rsi, %rdi
+    movq $SYS_CLOSE, %rax
+    syscall
+    jmp _fclose_exit
+
+_fclose_error:
+    movq $-1, %rax
+
+_fclose_exit:
+    movq %rbp, %rsp
+    popq %rbp
+    ret
 
 # ----------------------------------------
 # my_fprintf: escreve string em um arquivo
-# Argumentos: %rdi -> fd, %rsi -> string
+# Argumentos: %rdi -> FILE*, %rsi -> string
 # Retorno: %rax -> bytes escritos
 # ----------------------------------------
 .globl my_fprintf
@@ -359,31 +440,31 @@ my_fprintf:
 	pushq %rbp
 	movq %rsp, %rbp
 
-	pushq %rdi
-	pushq %rsi
-	
-	movq %rsi, %rdi
+	pushq %rdi      # FILE*
+	pushq %rsi      # string
+
+	movq %rsi, %r13
 	movq $0, %rcx
-_fprintf_loop:
-	cmpb $0, (%rdi, %rcx, 1)
-	je _fprintf_end_loop
+_fprintf_strlen_loop2:
+	cmpb $0, (%r13, %rcx, 1)
+	je _fprintf_strlen_end2
 	incq %rcx
-	jmp _fprintf_loop
-_fprintf_end_loop:
-	
+	jmp _fprintf_strlen_loop2
+_fprintf_strlen_end2:
 	movq %rcx, %rdx
-	popq %rsi
-	popq %rdi
+	popq %rsi       # string
+	popq %rdi       # FILE*
+	movq (%rdi), %rdi   # fd
 	movq $SYS_WRITE, %rax
 	syscall
-	
+
 	movq %rbp, %rsp
 	popq %rbp
 	ret
 	
 # ----------------------------------------
 # my_fscanf: lê de um arquivo para um buffer
-# Argumentos: %rdi -> fd, %rsi -> format (ignorado), %rdx -> buffer
+# Argumentos: %rdi -> FILE*, %rsi -> format (ignorado), %rdx -> buffer
 # Retorno: %rax -> bytes lidos
 # ----------------------------------------
 .globl my_fscanf
@@ -391,20 +472,21 @@ my_fscanf:
 	pushq %rbp
 	movq %rsp, %rbp
 
-	movq %rdx, %rsi
-	movq $TAM_BUFFER, %rdx
-	movq $SYS_READ, %rax
-	syscall
-	
+    movq (%rdi), %rdi
+    movq %rdx, %rsi
+    movq $TAM_BUFFER, %rdx
+    movq $SYS_READ, %rax
+    syscall
+
     cmpq $0, %rax
-    jle _fscanf_exit
+    jle _fscanf_exit2
     leaq -1(%rsi, %rax, 1), %r8
     cmpb $10, (%r8)
-    jne _fscanf_exit
+    jne _fscanf_exit2
     movb $0, (%r8)
     decq %rax
 
-_fscanf_exit:
-	movq %rbp, %rsp
-	popq %rbp
-	ret
+_fscanf_exit2:
+    movq %rbp, %rsp
+    popq %rbp
+    ret
