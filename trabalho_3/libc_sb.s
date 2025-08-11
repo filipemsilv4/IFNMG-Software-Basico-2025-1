@@ -93,6 +93,66 @@ _itoa_copy_loop:
 	ret
 
 # ----------------------------------------
+# _atoi: converte uma string para um inteiro (função interna)
+# Argumentos:
+#   %rdi: ponteiro para a string de origem
+# Retorno:
+#   %rax: o número inteiro convertido
+# ----------------------------------------
+_atoi:
+    pushq %rbp
+    movq %rsp, %rbp
+    
+    pushq %rbx
+    pushq %rcx
+    pushq %rdx
+    pushq %rdi
+
+    xorq %rax, %rax
+    movq $1, %r10
+    movq %rdi, %rsi
+
+    cmpb $'-', (%rsi)
+    jne _atoi_check_plus
+    movq $-1, %r10
+    incq %rsi
+    jmp _atoi_loop
+
+_atoi_check_plus:
+    cmpb $'+', (%rsi)
+    jne _atoi_loop
+    incq %rsi
+
+_atoi_loop:
+    movb (%rsi), %bl
+    cmpb $'0', %bl
+    jl _atoi_done
+    cmpb $'9', %bl
+    jg _atoi_done
+
+    subb $'0', %bl
+    movzbq %bl, %rbx
+
+    movq $10, %rcx
+    imulq %rcx, %rax
+    addq %rbx, %rax
+
+    incq %rsi
+    jmp _atoi_loop
+
+_atoi_done:
+    imulq %r10, %rax
+
+    popq %rdi
+    popq %rdx
+    popq %rcx
+    popq %rbx
+    
+    movq %rbp, %rsp
+    popq %rbp
+    ret
+
+# ----------------------------------------
 # my_printf: escreve uma string formatada na saida padrao
 # Argumentos:
 #   %rdi: endereço da string de formato
@@ -192,29 +252,56 @@ _printf_end:
 	ret
 
 # ----------------------------------------
-# my_scanf: lê uma string da entrada padrao
-# Argumentos: %rdi -> format (apenas para compatibilidade), %rsi -> buffer
-# Retorno: %rax -> número de caracteres lidos
+# my_scanf: lê dados formatados da entrada padrao
+# Argumentos: 
+#   %rdi -> formato, %rsi -> primeiro ponteiro de argumento, etc.
+# Retorno: %rax -> número de itens atribuídos com sucesso
 # ----------------------------------------
 .globl my_scanf
 my_scanf:
 	pushq %rbp
 	movq %rsp, %rbp
-	
-	movq $TAM_BUFFER, %rdx
-	movq $STDIN, %rdi
-	movq $SYS_READ, %rax
-	syscall
+    subq $8, %rsp
 
+    movq %rsi, (%rsp)
+
+    cmpb $'d', 1(%rdi)
+    je _scanf_handle_int
+
+_scanf_handle_str:
+    movq (%rsp), %rsi
+    movq $TAM_BUFFER, %rdx
+    movq $STDIN, %rdi
+    movq $SYS_READ, %rax
+    syscall
     cmpq $0, %rax
-    jle _scanf_exit
+    jle _scanf_exit_str
     leaq -1(%rsi, %rax, 1), %r8
     cmpb $10, (%r8)
-    jne _scanf_exit
+    jne _scanf_exit_str
     movb $0, (%r8)
     decq %rax
+_scanf_exit_str:
+    movq $1, %rax
+    jmp _scanf_end
 
-_scanf_exit:
+_scanf_handle_int:
+    leaq buffer(%rip), %rsi
+    movq $TAM_BUFFER, %rdx
+    movq $STDIN, %rdi
+    movq $SYS_READ, %rax
+    syscall
+    
+    leaq buffer(%rip), %rdi
+    call _atoi
+
+    movq (%rsp), %rdi
+    movl %eax, (%rdi)
+    
+    movq $1, %rax
+    
+_scanf_end:
+    addq $8, %rsp
 	movq %rbp, %rsp
 	popq %rbp
 	ret

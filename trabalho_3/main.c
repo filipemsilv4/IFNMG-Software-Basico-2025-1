@@ -3,7 +3,7 @@
 #include <string.h>
 
 extern int my_printf(const char* format, ...);
-extern int my_scanf(const char* format, char* buffer);
+extern int my_scanf(const char* format, ...);
 extern int my_fopen(const char* filename, const char* mode);
 extern int my_fclose(int fd);
 extern int my_fprintf(int fd, const char* format, ...);
@@ -27,18 +27,22 @@ void test_printf() {
 }
 
 void test_scanf() {
-    char buffer[256];
+    char str_buffer[256];
+    int num_read;
+
     my_printf("\n--- Teste my_scanf ---\n");
+    
     my_printf("Digite uma string e pressione Enter: ");
-    int bytes_read = my_scanf(NULL, buffer);
+    my_scanf("%s", str_buffer); 
+    my_printf("Você digitou a string: '%s'\n", str_buffer);
 
-    my_printf("Você digitou: '");
-    my_printf(buffer);
-    my_printf("'\n");
-
-    char count_str[50];
-    sprintf(count_str, "my_scanf leu %d bytes.\n", bytes_read);
-    my_printf(count_str);
+    my_printf("Agora, digite um número inteiro: ");
+    my_scanf("%d", &num_read);
+    my_printf("O número que você digitou foi: %d\n", num_read);
+    
+    my_printf("Agora, digite um número negativo: ");
+    my_scanf("%d", &num_read);
+    my_printf("O número negativo que você digitou foi: %d\n", num_read);
 }
 
 void test_file_io() {
