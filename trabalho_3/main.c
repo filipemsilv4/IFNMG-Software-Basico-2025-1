@@ -12,7 +12,18 @@ extern int my_fscanf(int fd, const char* format, char* buffer);
 void test_printf() {
     my_printf("--- Teste my_printf ---\n");
     my_printf("Esta é uma string de teste para my_printf.\n");
-    my_printf("Outra linha com números: 12345.\n");
+    
+    int num1 = 12345;
+    int num2 = -987;
+    int num3 = 0;
+    my_printf("Imprimindo um número positivo: %d\n", num1);
+    my_printf("Imprimindo um número negativo: %d\n", num2);
+    my_printf("Imprimindo o número zero: %d\n", num3);
+    
+    char* str = "mundo do Assembly";
+    my_printf("Olá, %s!\n", str);
+
+    my_printf("Valores: %d, %s e %d.\n", 100, "teste", -200);
 }
 
 void test_scanf() {
